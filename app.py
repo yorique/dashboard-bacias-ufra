@@ -85,6 +85,21 @@ def carregar_dados():
         df['HI'] = df['HI'].astype(str).str.replace(',', '.').astype(float)
     return df
 
+# --- NOVAS FUNÇÕES DE CACHE GEOGRÁFICO PARA ACELERAR O SISTEMA ---
+@st.cache_data
+def carregar_geojson_uc(caminho):
+    if os.path.exists(caminho):
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+@st.cache_data
+def carregar_geojson_relevo(caminho):
+    if os.path.exists(caminho):
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
 try:
     df_longo = carregar_dados()
     
@@ -116,10 +131,10 @@ try:
             ano_mapa_2 = st.sidebar.selectbox("Selecione o Ano do Mapa 2 (Direita)", lista_anos, index=len(lista_anos)-1)
         else:
             ano_selecionado = st.sidebar.selectbox("Ano de Análise", lista_anos, index=len(lista_anos)-1)
-            ano_mapa_1 = ano_selecionado # Para usar a mesma lógica estrutural de renderização
+            ano_mapa_1 = ano_selecionado
 
     # -------------------------------------------------------------
-    # SEÇÃO DINÂMICA: SE RELEVO FOR SELECIONADO (Exibir Dados Direto no Topo de Forma Compacta)
+    # SEÇÃO DINÂMICA: SE RELEVO FOR SELECIONADO
     # -------------------------------------------------------------
     if tipo_mapa == "Compartimentação de Relevo (EMBRAPA)":
         st.markdown(f"### 📍 Diagnóstico Morfométrico e Hipsométrico OBRIGATÓRIO: Bacia {bacia_selecionada}")
@@ -131,19 +146,16 @@ try:
         st.markdown("---")
 
     # -------------------------------------------------------------
-    # RENDERIZAÇÃO CENTRAL DO MAPA (TELA CHEIA OU DIVIDIDO)
+    # RENDERIZAÇÃO CENTRAL DO MAPA OTIMIZADA COM CACHE
     # -------------------------------------------------------------
-    
     if tipo_mapa == "Uso e Cobertura da Terra":
         if not modo_comparacao:
-            # MAPA ÚNICO - USO DO SOLO
+            # MAPA ÚNICO - USO DO SOLO (Com Cache)
             st.markdown(f"### 🗺️ Visualizador Espacial Único: Uso da Terra ({ano_mapa_1})")
             caminho_uc = os.path.join(PASTA_UCS, f"ucs_{nome_busca}_{ano_mapa_1}.geojson")
             
-            if os.path.exists(caminho_uc):
-                with open(caminho_uc, "r", encoding="utf-8") as f:
-                    geo_uc = json.load(f)
-                
+            geo_uc = carregar_geojson_uc(caminho_uc)
+            if geo_uc is not None:
                 m = folium.Map(tiles="CartoDB dark_matter")
                 def style_uc(feature):
                     classe = feature['properties'].get('Classe_MB', '')
@@ -157,16 +169,15 @@ try:
             else:
                 st.warning(f"Camada espacial ucs_{nome_busca}_{ano_mapa_1}.geojson não encontrada na pasta.")
         else:
-            # MAPA DUPLO - COMPARAÇÃO EVOLUTIVA LADO A LADO
+            # MAPA DUPLO - COMPARAÇÃO EVOLUTIVA LADO A LADO (Com Cache)
             st.markdown(f"### 🔄 Janela de Comparação Temporal Dinâmica: Ano {ano_mapa_1} vs. Ano {ano_mapa_2}")
             col_visual1, col_visual2 = st.columns(2)
             
             with col_visual1:
                 st.markdown(f"**Cenário Histórico ({ano_mapa_1})**")
                 caminho_1 = os.path.join(PASTA_UCS, f"ucs_{nome_busca}_{ano_mapa_1}.geojson")
-                if os.path.exists(caminho_1):
-                    with open(caminho_1, "r", encoding="utf-8") as f:
-                        geo_1 = json.load(f)
+                geo_1 = carregar_geojson_uc(caminho_1)
+                if geo_1 is not None:
                     m1 = folium.Map(tiles="CartoDB dark_matter")
                     def style_1(feature):
                         classe = feature['properties'].get('Classe_MB', '')
@@ -182,9 +193,8 @@ try:
             with col_visual2:
                 st.markdown(f"**Cenário Recente ({ano_mapa_2})**")
                 caminho_2 = os.path.join(PASTA_UCS, f"ucs_{nome_busca}_{ano_mapa_2}.geojson")
-                if os.path.exists(caminho_2):
-                    with open(caminho_2, "r", encoding="utf-8") as f:
-                        geo_2 = json.load(f)
+                geo_2 = carregar_geojson_uc(caminho_2)
+                if geo_2 is not None:
                     m2 = folium.Map(tiles="CartoDB dark_matter")
                     def style_2(feature):
                         classe = feature['properties'].get('Classe_MB', '')
@@ -198,14 +208,12 @@ try:
                     st.warning(f"Arquivo do ano {ano_mapa_2} ausente.")
 
     else:
-        # MAPA DE RELEVO - SELECIONADO (ABRANGENDO A EXTENSÃO COMPLETA DO DASHBOARD)
+        # MAPA DE RELEVO - COMPLETO (Com Cache)
         st.markdown("### ⛰️ Mapa de Declividade e Compartimentação de Relevo")
         caminho_rel = os.path.join(PASTA_RELEVO, f"rel_{nome_busca}.geojson")
         
-        if os.path.exists(caminho_rel):
-            with open(caminho_rel, "r", encoding="utf-8") as f:
-                geo_rel = json.load(f)
-            
+        geo_rel = carregar_geojson_relevo(caminho_rel)
+        if geo_rel is not None:
             m_relevo = folium.Map(tiles="CartoDB dark_matter")
             def style_relevo(feature):
                 classe = feature['properties'].get('Classe', '')
@@ -221,7 +229,7 @@ try:
     st.markdown("---")
 
     # -------------------------------------------------------------
-    # SEÇÃO ESTATÍSTICA INFERIOR (Mantendo os Gráficos do Último app.py)
+    # SEÇÃO ESTATÍSTICA INFERIOR
     # -------------------------------------------------------------
     st.markdown("### 📊 Inteligência de Dados e Gráficos Estatísticos Avançados")
     col_g1, col_g2 = st.columns(2)
@@ -239,9 +247,8 @@ try:
     with col_g2:
         st.markdown("### Distribuição Proporcional do Relevo (Fixo)")
         caminho_rel_check = os.path.join(PASTA_RELEVO, f"rel_{nome_busca}.geojson")
-        if os.path.exists(caminho_rel_check):
-            with open(caminho_rel_check, "r", encoding="utf-8") as f:
-                geo_rosca_data = json.load(f)
+        geo_rosca_data = carregar_geojson_relevo(caminho_rel_check)
+        if geo_rosca_data is not None:
             dados_rosca = [{"Classe": f['properties'].get("Classe", "N/A"), "Área (ha)": f['properties'].get("Area_ha", 0)} for f in geo_rosca_data['features']]
             df_rosca = pd.DataFrame(dados_rosca)
             fig_rosca = px.pie(df_rosca, values="Área (ha)", names="Classe", hole=0.46, color="Classe", color_discrete_map=CORES_RELEVO, template="plotly_dark")
